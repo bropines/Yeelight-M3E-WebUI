@@ -8,121 +8,151 @@ export class App {
     private container: HTMLElement;
     private contentArea: HTMLElement;
     private currentView: any = null;
-    private currentTab: string = 'scenes';
+    private lastState: any[] = [];
+    private pollInterval: any;
 
     constructor(root: HTMLElement) {
         root.innerHTML = `
-            <m3e-theme scheme="dark" color="#D0BCFF" class="flex h-screen w-full text-gray-200 overflow-hidden relative">
-                <!-- Save Dialog -->
+            <m3e-theme scheme="dark" color="#D0BCFF" class="flex h-screen w-full bg-background text-on-surface overflow-hidden relative flex-col md:flex-row">
+                
+                <!-- 1. DESKTOP RAIL (PC Only) -->
+                <m3e-nav-rail id="mainRail" class="hidden md:flex border-r border-outline-variant/10">
+                    <m3e-icon-button slot="menu-button" toggle>
+                        <m3e-icon name="menu"></m3e-icon>
+                        <m3e-icon slot="selected" name="menu_open"></m3e-icon>
+                        <m3e-nav-rail-toggle for="mainRail"></m3e-nav-rail-toggle>
+                    </m3e-icon-button>
+
+                    ${this.renderNavItems('rail')}
+                </m3e-nav-rail>
+
+                <!-- 2. MAIN CONTENT AREA -->
+                <div class="flex-1 flex flex-col h-full min-w-0 bg-background transition-all overflow-hidden">
+                    
+                    <!-- HEADER -->
+                    <header class="h-20 px-4 md:px-8 flex items-center justify-between border-b border-outline-variant/10 bg-surface gap-4 shrink-0 z-10">
+                        
+                        <!-- Title & Status -->
+                        <div class="flex items-center gap-3">
+                            <span class="text-title-medium md:text-title-large font-bold whitespace-nowrap hidden sm:block">Yeelight</span>
+                            <div class="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-surface-variant/50 border border-outline-variant/10" id="statusBadge">
+                                <span class="w-2 h-2 rounded-full bg-error"></span>
+                                <span class="text-xs font-mono opacity-70 uppercase tracking-widest">Offline</span>
+                            </div>
+                        </div>
+
+                        <!-- CONTROLS -->
+                        <div class="flex items-center gap-3 flex-1 justify-end">
+                            
+                            <!-- Refresh -->
+                            <m3e-icon-button id="btnRefresh" variant="standard" class="text-on-surface-variant hidden sm:flex">
+                                <m3e-icon name="refresh"></m3e-icon>
+                            </m3e-icon-button>
+
+                            <!-- IP Input -->
+                            <div class="flex items-center bg-surface-variant rounded-xl px-3 h-10 md:h-12 border border-outline-variant/20 hover:border-outline/50 transition-colors w-32 md:w-48">
+                                <input type="text" id="ipInput" class="bg-transparent border-none outline-none text-sm font-mono text-on-surface-variant w-full text-center placeholder:text-on-surface-variant/30" placeholder="192.168.1.X">
+                            </div>
+                            
+                            <!-- Save -->
+                            <m3e-icon-button id="btnSaveDevice" variant="tonal" class="shrink-0">
+                                <m3e-icon name="save"></m3e-icon>
+                            </m3e-icon-button>
+
+                            <!-- Separator -->
+                            <div class="w-px h-8 bg-outline-variant/20 mx-1 hidden sm:block"></div>
+
+                            <!-- POWER SWITCH (Тумблер) -->
+                            <div class="flex items-center gap-2 bg-surface-container-high rounded-full pl-4 pr-1 py-1 border border-outline-variant/10">
+                                <span class="text-label-small font-bold uppercase tracking-wider mr-1 hidden sm:block">Питание</span>
+                                <m3e-switch id="powerSwitch" icons="selected"></m3e-switch>
+                            </div>
+                        </div>
+                    </header>
+
+                    <!-- VIEW CONTAINER -->
+                    <main id="viewContainer" class="flex-1 p-4 md:p-8 overflow-y-auto custom-scrollbar pb-24 md:pb-8"></main>
+                </div>
+
+                <!-- 3. MOBILE BOTTOM BAR (Phone Only) -->
+                <m3e-nav-bar class="md:hidden border-t border-outline-variant/10 shrink-0 z-20">
+                    ${this.renderNavItems('bar')}
+                </m3e-nav-bar>
+
+                <!-- SAVE DIALOG -->
                 <m3e-dialog id="saveDialog" headline="Сохранить устройство">
-                    <form slot="content" id="saveForm" class="flex flex-col gap-4 mt-2">
-                        <m3e-form-field class="w-full">
-                            <label slot="label">IP Адрес</label>
-                            <input type="text" id="dlgIp" readonly>
-                        </m3e-form-field>
-                        <m3e-form-field class="w-full">
-                            <label slot="label">Название</label>
-                            <input type="text" id="dlgName" placeholder="Например: Люстра">
-                        </m3e-form-field>
-                    </form>
+                    <div slot="content" class="flex flex-col gap-4 py-2 min-w-[300px]">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-label-small text-primary font-bold">IP АДРЕС</label>
+                            <input type="text" id="dlgIp" readonly 
+                                class="w-full h-10 px-3 rounded-lg bg-surface-variant text-on-surface border border-outline/20 font-mono outline-none">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-label-small text-primary font-bold">НАЗВАНИЕ</label>
+                            <input type="text" id="dlgName" placeholder="Моя Лампа" 
+                                class="w-full h-10 px-3 rounded-lg bg-surface-variant text-on-surface border border-outline/20 outline-none focus:border-primary">
+                        </div>
+                    </div>
                     <div slot="actions">
                         <m3e-button variant="text" id="dlgCancel">Отмена</m3e-button>
                         <m3e-button variant="filled" id="dlgSave">Сохранить</m3e-button>
                     </div>
                 </m3e-dialog>
+
             </m3e-theme>
         `;
         
         this.container = root.querySelector('m3e-theme') as HTMLElement;
-        this.contentArea = document.createElement("main");
-        this.contentArea.className = "flex-1 bg-surface p-4 md:p-8 overflow-y-auto relative custom-scrollbar";
+        this.contentArea = root.querySelector('#viewContainer') as HTMLElement;
 
-        this.render();
         this.initLogic();
+        this.navigate('scenes');
         
-        // Sync on start
-        setTimeout(() => this.syncState(), 500);
+        this.syncState();
+        this.pollInterval = setInterval(() => this.syncState(), 5000);
     }
 
-    render() {
-        const sidebar = document.createElement("aside");
-        sidebar.className = "w-80 bg-surface-container-low flex flex-col p-6 gap-6 border-r border-white/5 z-20 shadow-2xl shrink-0";
-        
-        sidebar.innerHTML = `
-            <div class="flex items-center gap-4 mb-2">
-                <div class="w-12 h-12 rounded-2xl bg-primary/20 text-primary flex items-center justify-center">
-                    <m3e-icon name="lightbulb" style="font-size: 32px;"></m3e-icon>
-                </div>
-                <div>
-                    <h1 class="font-bold text-xl tracking-tight">Yeelight</h1>
-                    <div class="flex items-center gap-2 text-xs opacity-60 font-mono mt-1" id="statusBadge">
-                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
-                        <span>Offline</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-surface-container-high rounded-2xl p-2 flex gap-2 items-center border border-white/5">
-                <input type="text" placeholder="192.168.1.X" class="bg-transparent w-full text-sm text-white outline-none px-3 font-mono h-10 placeholder:opacity-30" id="ipInput">
-                <m3e-icon-button variant="tonal" id="btnSaveDevice">
-                    <m3e-icon name="save"></m3e-icon>
-                </m3e-icon-button>
-            </div>
+    renderNavItems(type: 'rail' | 'bar') {
+        const items = [
+            { id: 'scenes', icon: 'auto_awesome', label: 'Сцены' },
+            { id: 'color', icon: 'palette', label: 'Цвет' },
+            { id: 'temp', icon: 'thermostat', label: 'Белый' },
+            { id: 'music', icon: 'mic', label: 'Музыка' },
+            { id: 'builder', icon: 'build', label: 'Сборка' },
+        ];
 
-            <!-- Stored Devices List (Optional placeholder) -->
-            <div id="devicesList" class="flex flex-col gap-1 max-h-20 overflow-y-auto hidden"></div>
-
-            <div class="flex items-center justify-between p-4 rounded-2xl bg-surface-container-high border border-white/5">
-                <div class="flex items-center gap-3">
-                    <m3e-icon name="power_settings_new"></m3e-icon>
-                    <span class="font-bold text-sm">Питание</span>
-                </div>
-                <m3e-switch id="powerSwitch" icons="selected"></m3e-switch>
-            </div>
-
-            <nav class="flex flex-col gap-2 mt-2 flex-1 overflow-y-auto pr-1 custom-scrollbar" id="navMenu">
-                ${this.renderNavItem('scenes', 'auto_awesome', 'Сцены')}
-                ${this.renderNavItem('color', 'palette', 'Цвет')}
-                ${this.renderNavItem('temp', 'thermostat', 'Белый')}
-                ${this.renderNavItem('music', 'mic', 'Музыка')}
-                ${this.renderNavItem('builder', 'build', 'Сборка')}
-            </nav>
-        `;
-
-        this.container.appendChild(sidebar);
-        this.container.appendChild(this.contentArea);
-    }
-
-    renderNavItem(id: string, icon: string, label: string) {
-        // Tab style navigation
-        return `
-        <button data-tab="${id}" class="nav-item relative flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-200 text-sm font-medium text-left group overflow-hidden">
-            <div class="absolute inset-0 bg-primary opacity-0 transition-opacity duration-200 group-hover:opacity-10 active-bg"></div>
-            <m3e-icon name="${icon}" class="text-2xl relative z-10"></m3e-icon>
-            <span class="relative z-10">${label}</span>
-        </button>`;
+        return items.map((item, idx) => `
+            <m3e-nav-item data-tab="${item.id}" ${idx === 0 ? 'active' : ''}>
+                <m3e-icon slot="${type === 'bar' ? 'active-icon' : 'icon'}" name="${item.icon}"></m3e-icon>
+                ${type === 'bar' ? `<m3e-icon slot="icon" name="${item.icon}"></m3e-icon>` : ''}
+                ${item.label}
+            </m3e-nav-item>
+        `).join('');
     }
 
     initLogic() {
         const ipInput = document.getElementById('ipInput') as HTMLInputElement;
         ipInput.value = localStorage.getItem('bulb_ip') || '';
-        
         ipInput.addEventListener('change', () => {
             localStorage.setItem('bulb_ip', ipInput.value);
             this.syncState();
         });
 
-        // Power
-        document.getElementById('powerSwitch')?.addEventListener('change', () => this.api('toggle'));
+        // Power Switch Logic
+        const pwrSwitch = document.getElementById('powerSwitch') as any;
+        pwrSwitch?.addEventListener('change', () => this.api('toggle'));
+        
+        // Manual Refresh
+        document.getElementById('btnRefresh')?.addEventListener('click', () => this.syncState());
 
-        // Save Dialog Logic
+        // Dialog
         const dialog = document.getElementById('saveDialog') as any;
         const dlgIp = document.getElementById('dlgIp') as HTMLInputElement;
         const dlgName = document.getElementById('dlgName') as HTMLInputElement;
 
         document.getElementById('btnSaveDevice')?.addEventListener('click', () => {
+            if(!ipInput.value) return;
             dlgIp.value = ipInput.value;
-            // Load existing name if any
             const saved = JSON.parse(localStorage.getItem('yeelight_devices') || '{}');
             dlgName.value = saved[ipInput.value] || '';
             dialog.open = true;
@@ -134,83 +164,83 @@ export class App {
                 const saved = JSON.parse(localStorage.getItem('yeelight_devices') || '{}');
                 saved[dlgIp.value] = dlgName.value || 'My Lamp';
                 localStorage.setItem('yeelight_devices', JSON.stringify(saved));
-                alert("Сохранено!");
                 dialog.open = false;
             }
         });
 
-        // Nav Logic
-        this.container.querySelectorAll('.nav-item').forEach(btn => {
-            btn.addEventListener('click', () => this.navigate(btn.getAttribute('data-tab')!));
-        });
+        // Navigation
+        const navItems = this.container.querySelectorAll('m3e-nav-item');
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const tab = item.getAttribute('data-tab');
+                if(!tab) return;
 
-        this.navigate('scenes');
+                navItems.forEach(i => {
+                    if(i.getAttribute('data-tab') === tab) i.setAttribute('active', '');
+                    else i.removeAttribute('active');
+                });
+                
+                this.navigate(tab);
+            });
+        });
     }
 
-    async navigate(tab: string) {
+    navigate(tab: string) {
         if(this.currentView && typeof this.currentView.stop === 'function') this.currentView.stop();
         this.contentArea.innerHTML = '';
-        this.currentTab = tab;
-
-        // Visual Active State (Tabs)
-        this.container.querySelectorAll('.nav-item').forEach(el => {
-            const isActive = el.getAttribute('data-tab') === tab;
-            const bg = el.querySelector('.active-bg') as HTMLElement;
-            
-            if(isActive) {
-                el.classList.add('text-on-secondary-container', 'bg-secondary-container');
-                el.classList.remove('text-gray-400');
-                bg.classList.add('opacity-100'); // Full opacity for active bg
-            } else {
-                el.classList.remove('text-on-secondary-container', 'bg-secondary-container');
-                el.classList.add('text-gray-400');
-                bg.classList.remove('opacity-100');
-            }
-        });
 
         switch(tab) {
             case 'scenes': this.currentView = new ScenesView(this.contentArea); break;
-            case 'color': this.currentView = new ColorView(this.contentArea); break;
-            case 'temp': this.currentView = new TempView(this.contentArea); break;
+            case 'color': this.currentView = new ColorView(this.contentArea, this.lastState); break;
+            case 'temp': this.currentView = new TempView(this.contentArea, this.lastState); break;
             case 'music': this.currentView = new MusicView(this.contentArea); break;
             case 'builder': this.currentView = new BuilderView(this.contentArea); break;
         }
-        
-        // Update view with current state if available
-        this.syncState();
     }
 
     async syncState() {
         const ip = localStorage.getItem('bulb_ip');
         if(!ip) return;
         
+        const badge = document.getElementById('statusBadge');
+        const pwrSwitch = document.getElementById('powerSwitch') as any;
+        const refreshBtn = document.getElementById('btnRefresh');
+
+        if(refreshBtn) refreshBtn.style.opacity = '0.5';
+
         try {
             const res = await fetch(`/api/status?ip=${ip}`);
             if(!res.ok) throw new Error();
             const data = await res.json(); 
-            // data: [power, bright, ct, rgb, color_mode]
+            this.lastState = data;
 
-            // Global UI updates
-            const pwr = document.querySelector('#powerSwitch') as any;
-            if(pwr) pwr.checked = (data[0] === 'on');
-            
-            const badge = document.querySelector('#statusBadge');
-            if(badge) badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]"></span><span>Online</span>`;
+            // Sync Switch State
+            if(pwrSwitch) {
+                // m3e-switch использует свойство selected или checked в зависимости от версии
+                // пробуем оба для надежности
+                const isOn = data[0] === 'on';
+                pwrSwitch.selected = isOn;
+                pwrSwitch.checked = isOn;
+            }
 
-            // Pass data to current view if it has update method
+            if(badge) badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]"></span><span class="opacity-100 font-bold text-green-200">Online</span>`;
+
             if(this.currentView && typeof this.currentView.update === 'function') {
                 this.currentView.update(data);
             }
-
         } catch(e) {
-            const badge = document.querySelector('#statusBadge');
-            if(badge) badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500"></span><span>Offline</span>`;
+            if(badge) badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-error"></span><span class="opacity-70">Offline</span>`;
+        } finally {
+            if(refreshBtn) refreshBtn.style.opacity = '1';
         }
     }
 
     async api(type: string, val = '') {
         const ip = localStorage.getItem('bulb_ip');
         if(!ip) return;
-        try { await fetch(`/api/act?ip=${ip}&type=${type}&val=${val}`); } catch(e) {}
+        try { 
+            await fetch(`/api/act?ip=${ip}&type=${type}&val=${val}`);
+            setTimeout(() => this.syncState(), 200);
+        } catch(e) {}
     }
 }

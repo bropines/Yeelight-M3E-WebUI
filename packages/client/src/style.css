@@ -5,17 +5,21 @@
 /* Custom Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #444; }
+::-webkit-scrollbar-thumb { background: var(--md-sys-color-outline-variant); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--md-sys-color-outline); }
 
-body { background: #141316; }
-
-@layer components {
-    .bg-surface { background-color: #141316; }
-    .bg-surface-container { background-color: #1D1B20; }
+/* Force dark defaults to prevent flash of white/black text */
+body { 
+    background-color: #141316; 
+    color: #E6E1E5; 
+    margin: 0;
 }
 
-m3e-button {
-    --md-sys-color-primary: #D0BCFF;
-    --md-sys-color-on-primary: #381E72;
+/* Ensure M3E theme fills screen */
+m3e-theme {
+    display: flex;
+    width: 100%;
+    height: 100vh;
+    background-color: var(--md-sys-color-background);
+    color: var(--md-sys-color-on-background);
 }
