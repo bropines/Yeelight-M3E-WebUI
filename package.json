@@ -1,0 +1,13 @@
+{
+  "workspaces": [
+    "packages/*"
+  ],
+  "private": true,
+  "dependencies": {
+    "concurrently": "^8.2.0"
+  },
+  "scripts": {
+    "dev": "concurrently \"bun run --filter @yeelight/server dev\" \"bun run --filter @yeelight/client dev\""
+  },
+  "name": "yeelight-md3-monorepo"
+}

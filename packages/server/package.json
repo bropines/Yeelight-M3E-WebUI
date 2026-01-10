@@ -1,0 +1,12 @@
+{
+  "type": "module",
+  "name": "@yeelight/server",
+  "version": "1.0.0",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "scripts": {
+    "dev": "bun run --watch src/index.ts"
+  }
+}
