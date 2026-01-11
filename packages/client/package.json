@@ -3,12 +3,13 @@
   "name": "@yeelight/client",
   "version": "1.0.0",
   "dependencies": {
-    "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.32",
     "@jaames/iro": "^5.5.2",
+    "@m3e/all": "*",
+    "autoprefixer": "^10.4.16",
     "js-yaml": "^4.1.0",
+    "postcss": "^8.4.32",
     "tailwindcss": "^3.4.1",
-    "@m3e/all": "*"
+    "vanilla-colorful": "^0.7.2"
   },
   "devDependencies": {
     "typescript": "^5.3.3",

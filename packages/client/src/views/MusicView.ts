@@ -1,7 +1,9 @@
+// packages/client/src/views/MusicView.ts
+
 import { throttle } from '../utils/throttle';
 
 export class MusicView {
-    // ... (поля те же)
+    // ... (остальные поля без изменений)
     private active = false;
     private audioCtx: AudioContext | null = null;
     private analyser: AnalyserNode | null = null;
@@ -14,12 +16,9 @@ export class MusicView {
     private sensitivity = 130;
     private smoothing = 0.5;
     
-    // Throttled sender
     private throttledSend: Function;
 
     constructor(root: HTMLElement) {
-        // Ограничиваем отправку пакетов музыки до 10-12 раз в секунду (80-100мс)
-        // Лампа по TCP не вывезет 60fps
         this.throttledSend = throttle((ip: string, bri: number) => {
             fetch(`/api/music/update?ip=${ip}&bri=${bri}`).catch(()=>{});
         }, 80);
@@ -27,7 +26,6 @@ export class MusicView {
         const container = document.createElement('div');
         container.className = "flex flex-col items-center h-full gap-6 pt-6 animate-fade-in w-full max-w-3xl mx-auto";
         
-        // ... (HTML тот же, но убедись что слайдеры имеют thumb)
         container.innerHTML = `
             <m3e-card variant="outlined" class="!p-0 overflow-hidden w-full aspect-video relative bg-black border-white/10 rounded-3xl shadow-2xl">
                  <canvas id="visCanvas" class="w-full h-full opacity-80"></canvas>
@@ -38,6 +36,7 @@ export class MusicView {
                  </div>
             </m3e-card>
 
+            <!-- ОСТАЛЬНОЙ HTML КОД БЕЗ ИЗМЕНЕНИЙ (Controls...) -->
             <div class="w-full max-w-md flex flex-col gap-4">
                 <div class="bg-surface-container-low p-4 rounded-xl border border-white/5 flex flex-col gap-4">
                     <div>
@@ -59,7 +58,6 @@ export class MusicView {
                         </m3e-slider>
                     </div>
                 </div>
-                <!-- ... Кнопки запуска ... -->
                 <div class="flex items-center gap-4 w-full">
                     <m3e-segmented-button id="srcSelect" class="flex-1">
                         <m3e-button-segment value="mic" checked icon="mic">Микрофон</m3e-button-segment>
@@ -88,13 +86,13 @@ export class MusicView {
         
         root.appendChild(container);
         this.canvas = container.querySelector('#visCanvas');
-        this.resizeCanvas();
+        
+        // Initial resize
+        setTimeout(() => this.resizeCanvas(), 0);
         window.addEventListener('resize', () => this.resizeCanvas());
 
-        // ... (Listeners те же, но берем value из event.target.value для M3E slider в этом контексте)
-        // Для слайдеров M3E в shadow DOM иногда value надо брать через detail или само свойство
+        // ... (Listeners без изменений)
         container.querySelector('#sensSlider')?.addEventListener('input', (e: any) => {
-            // M3E Slider emits input event, target has value
             this.sensitivity = parseInt(e.target.value); 
             document.getElementById('sensVal')!.innerText = e.target.value;
         });
@@ -104,7 +102,6 @@ export class MusicView {
             document.getElementById('smoothVal')!.innerText = e.target.value + '%';
         });
         
-        // ... (Остальной код запуска/стопа без изменений)
         const segBtn = container.querySelector('#srcSelect');
         segBtn?.addEventListener('change', () => {
             const segments = Array.from(segBtn.querySelectorAll('m3e-button-segment')) as any[];
@@ -124,16 +121,20 @@ export class MusicView {
         if(this.canvas) {
             const rect = this.canvas.parentElement?.getBoundingClientRect();
             if (rect) {
-                this.canvas.width = rect.width;
-                this.canvas.height = rect.height;
+                // High DPI Fix
+                const dpr = window.devicePixelRatio || 1;
+                
+                // Устанавливаем размер буфера с учетом DPR
+                this.canvas.width = rect.width * dpr;
+                this.canvas.height = rect.height * dpr;
+                
+                // Масштабируем контекст, чтобы рисовать в логических пикселях
                 this.ctx = this.canvas.getContext('2d');
+                if (this.ctx) this.ctx.scale(dpr, dpr);
             }
         }
     }
 
-    // ... start() / stop() / loop() ...
-    // В loop() используем this.throttledSend вместо прямого fetch
-    // ...
     async start() {
         try {
             const ip = localStorage.getItem('bulb_ip');
@@ -176,7 +177,11 @@ export class MusicView {
         
         document.querySelector('#btnStart')?.classList.remove('hidden');
         document.querySelector('#btnStop')?.classList.add('hidden');
-        if(this.ctx && this.canvas) this.ctx.clearRect(0,0, this.canvas.width, this.canvas.height);
+        // Clear canvas using logical dimensions
+        if(this.ctx && this.canvas) {
+             const rect = this.canvas.parentElement!.getBoundingClientRect();
+             this.ctx.clearRect(0,0, rect.width, rect.height);
+        }
     }
 
     loop() {
@@ -186,8 +191,11 @@ export class MusicView {
         this.analyser.smoothingTimeConstant = this.smoothing;
         this.analyser.getByteFrequencyData(this.dataArray!);
         
-        const w = this.canvas!.width;
-        const h = this.canvas!.height;
+        // Используем логические размеры (getBoundingClientRect) для рисования
+        const rect = this.canvas!.parentElement!.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+
         this.ctx!.fillStyle = '#000';
         this.ctx!.fillRect(0, 0, w, h);
 
@@ -239,9 +247,7 @@ export class MusicView {
              } else {
                  const ip = localStorage.getItem('bulb_ip');
                  if(ip) {
-                     // USE THROTTLE
                      this.throttledSend(ip, bri);
-                     
                      if(sentNode) {
                          sentNode.innerText = `SENT: Bri ${bri}%`;
                          sentNode.className = "text-primary font-bold";

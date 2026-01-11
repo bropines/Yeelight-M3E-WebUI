@@ -3,6 +3,18 @@ import { ColorView } from '../views/ColorView';
 import { TempView } from '../views/TempView';
 import { MusicView } from '../views/MusicView';
 import { BuilderView } from '../views/BuilderView';
+import { SettingsView, ThemeConfig } from '../views/SettingsView'; // Import new view
+
+// Regex для валидации IPv4
+const IP_REGEX = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+
+// Default Theme Config
+const DEFAULT_THEME: ThemeConfig = {
+    color: '#D0BCFF',
+    scheme: 'dark',
+    density: 0,
+    motion: 'standard'
+};
 
 export class App {
     private container: HTMLElement;
@@ -10,10 +22,21 @@ export class App {
     private currentView: any = null;
     private lastState: any[] = [];
     private pollInterval: any;
+    private themeConfig: ThemeConfig;
 
     constructor(root: HTMLElement) {
+        // Load Theme Config
+        const savedTheme = localStorage.getItem('yeelight_theme');
+        this.themeConfig = savedTheme ? JSON.parse(savedTheme) : DEFAULT_THEME;
+
         root.innerHTML = `
-            <m3e-theme scheme="dark" color="#D0BCFF" class="flex h-screen w-full bg-background text-on-surface overflow-hidden relative flex-col md:flex-row">
+            <m3e-theme 
+                scheme="${this.themeConfig.scheme}" 
+                color="${this.themeConfig.color}" 
+                density="${this.themeConfig.density}" 
+                motion="${this.themeConfig.motion}"
+                class="flex h-screen w-full bg-background text-on-surface overflow-hidden relative flex-col md:flex-row transition-colors duration-500"
+                id="mainTheme">
                 
                 <!-- 1. DESKTOP RAIL (PC Only) -->
                 <m3e-nav-rail id="mainRail" class="hidden md:flex border-r border-outline-variant/10">
@@ -50,7 +73,7 @@ export class App {
                             </m3e-icon-button>
 
                             <!-- IP Input -->
-                            <div class="flex items-center bg-surface-variant rounded-xl px-3 h-10 md:h-12 border border-outline-variant/20 hover:border-outline/50 transition-colors w-32 md:w-48">
+                            <div class="flex items-center bg-surface-variant rounded-xl px-3 h-10 md:h-12 border border-outline-variant/20 hover:border-outline/50 transition-colors w-32 md:w-48 group focus-within:border-primary">
                                 <input type="text" id="ipInput" class="bg-transparent border-none outline-none text-sm font-mono text-on-surface-variant w-full text-center placeholder:text-on-surface-variant/30" placeholder="192.168.1.X">
                             </div>
                             
@@ -62,7 +85,7 @@ export class App {
                             <!-- Separator -->
                             <div class="w-px h-8 bg-outline-variant/20 mx-1 hidden sm:block"></div>
 
-                            <!-- POWER SWITCH (Тумблер) -->
+                            <!-- POWER SWITCH -->
                             <div class="flex items-center gap-2 bg-surface-container-high rounded-full pl-4 pr-1 py-1 border border-outline-variant/10">
                                 <span class="text-label-small font-bold uppercase tracking-wider mr-1 hidden sm:block">Питание</span>
                                 <m3e-switch id="powerSwitch" icons="selected"></m3e-switch>
@@ -102,7 +125,7 @@ export class App {
             </m3e-theme>
         `;
         
-        this.container = root.querySelector('m3e-theme') as HTMLElement;
+        this.container = root.querySelector('#mainTheme') as HTMLElement;
         this.contentArea = root.querySelector('#viewContainer') as HTMLElement;
 
         this.initLogic();
@@ -119,6 +142,7 @@ export class App {
             { id: 'temp', icon: 'thermostat', label: 'Белый' },
             { id: 'music', icon: 'mic', label: 'Музыка' },
             { id: 'builder', icon: 'build', label: 'Сборка' },
+            { id: 'settings', icon: 'settings', label: 'Настр.' }, // New Item
         ];
 
         return items.map((item, idx) => `
@@ -132,26 +156,40 @@ export class App {
 
     initLogic() {
         const ipInput = document.getElementById('ipInput') as HTMLInputElement;
-        ipInput.value = localStorage.getItem('bulb_ip') || '';
-        ipInput.addEventListener('change', () => {
-            localStorage.setItem('bulb_ip', ipInput.value);
-            this.syncState();
+        const currentIp = localStorage.getItem('bulb_ip') || '';
+        ipInput.value = currentIp;
+
+        // IP Validation
+        ipInput.addEventListener('input', () => {
+            const val = ipInput.value.trim();
+            if (IP_REGEX.test(val)) {
+                ipInput.classList.remove('text-error');
+                localStorage.setItem('bulb_ip', val);
+                this.syncState();
+            } else {
+                ipInput.classList.add('text-error');
+            }
         });
 
-        // Power Switch Logic
+        // Power Switch
         const pwrSwitch = document.getElementById('powerSwitch') as any;
-        pwrSwitch?.addEventListener('change', () => this.api('toggle'));
+        pwrSwitch?.addEventListener('change', (e: any) => {
+            const newState = e.target.checked;
+            if (this.lastState.length > 0) {
+                this.lastState[0] = newState ? 'on' : 'off';
+            }
+            this.api('toggle');
+        });
         
-        // Manual Refresh
         document.getElementById('btnRefresh')?.addEventListener('click', () => this.syncState());
 
-        // Dialog
+        // Dialog Logic
         const dialog = document.getElementById('saveDialog') as any;
         const dlgIp = document.getElementById('dlgIp') as HTMLInputElement;
         const dlgName = document.getElementById('dlgName') as HTMLInputElement;
 
         document.getElementById('btnSaveDevice')?.addEventListener('click', () => {
-            if(!ipInput.value) return;
+            if(!ipInput.value || !IP_REGEX.test(ipInput.value)) return;
             dlgIp.value = ipInput.value;
             const saved = JSON.parse(localStorage.getItem('yeelight_devices') || '{}');
             dlgName.value = saved[ipInput.value] || '';
@@ -185,6 +223,17 @@ export class App {
         });
     }
 
+    applyTheme(conf: ThemeConfig) {
+        this.themeConfig = conf;
+        localStorage.setItem('yeelight_theme', JSON.stringify(conf));
+        
+        // Update M3E Theme properties
+        this.container.setAttribute('color', conf.color);
+        this.container.setAttribute('scheme', conf.scheme);
+        this.container.setAttribute('density', conf.density.toString());
+        this.container.setAttribute('motion', conf.motion);
+    }
+
     navigate(tab: string) {
         if(this.currentView && typeof this.currentView.stop === 'function') this.currentView.stop();
         this.contentArea.innerHTML = '';
@@ -195,12 +244,13 @@ export class App {
             case 'temp': this.currentView = new TempView(this.contentArea, this.lastState); break;
             case 'music': this.currentView = new MusicView(this.contentArea); break;
             case 'builder': this.currentView = new BuilderView(this.contentArea); break;
+            case 'settings': this.currentView = new SettingsView(this.contentArea, this.themeConfig, (c) => this.applyTheme(c)); break;
         }
     }
 
     async syncState() {
         const ip = localStorage.getItem('bulb_ip');
-        if(!ip) return;
+        if(!ip || !IP_REGEX.test(ip)) return;
         
         const badge = document.getElementById('statusBadge');
         const pwrSwitch = document.getElementById('powerSwitch') as any;
@@ -214,13 +264,12 @@ export class App {
             const data = await res.json(); 
             this.lastState = data;
 
-            // Sync Switch State
             if(pwrSwitch) {
-                // m3e-switch использует свойство selected или checked в зависимости от версии
-                // пробуем оба для надежности
                 const isOn = data[0] === 'on';
-                pwrSwitch.selected = isOn;
-                pwrSwitch.checked = isOn;
+                if (pwrSwitch.checked !== isOn) {
+                    pwrSwitch.selected = isOn;
+                    pwrSwitch.checked = isOn;
+                }
             }
 
             if(badge) badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]"></span><span class="opacity-100 font-bold text-green-200">Online</span>`;
@@ -240,7 +289,9 @@ export class App {
         if(!ip) return;
         try { 
             await fetch(`/api/act?ip=${ip}&type=${type}&val=${val}`);
-            setTimeout(() => this.syncState(), 200);
+            if (type !== 'toggle') {
+                setTimeout(() => this.syncState(), 200);
+            }
         } catch(e) {}
     }
 }

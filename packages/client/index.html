@@ -1,3 +1,4 @@
+<!-- packages/client/index.html -->
 <!DOCTYPE html>
 <html lang="ru" class="dark">
 <head>
@@ -7,15 +8,26 @@
     
     <!-- M3E Fonts & Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <!-- ВАЖНО: M3E использует Material Symbols Outlined по умолчанию -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
     
     <style>
-        body { margin: 0; background-color: #141316; font-family: 'Roboto', sans-serif; overflow: hidden; }
-        /* Глобальные токены для темной темы, если M3E не подхватит */
+        /* FIX: Initial White Flash Prevention */
+        html, body {
+            background-color: #141316;
+            color: #E6E1E5;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Roboto', sans-serif;
+        }
+        
+        /* Fallback tokens before M3E loads */
         :root {
             --md-sys-color-surface: #141316;
             --md-sys-color-on-surface: #E6E1E5;
+            --md-sys-color-background: #141316;
         }
     </style>
 </head>

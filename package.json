@@ -7,7 +7,8 @@
     "concurrently": "^8.2.0"
   },
   "scripts": {
-    "dev": "concurrently \"bun run --filter @yeelight/server dev\" \"bun run --filter @yeelight/client dev\""
+    "clean": "rm -rf packages/client/node_modules/.vite",
+    "dev": "npm run clean && concurrently \"bun run --filter @yeelight/server dev\" \"bun run --filter @yeelight/client dev\""
   },
   "name": "yeelight-md3-monorepo"
 }
