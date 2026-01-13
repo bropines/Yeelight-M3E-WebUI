@@ -1,28 +1,23 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 import path from 'path';
 
 const rootNodeModules = path.resolve(__dirname, '../../node_modules');
 
 export default defineConfig({
+  plugins: [react()],
   resolve: {
-    // ПРИНУДИТЕЛЬНО используем одну копию библиотек
     dedupe: ['lit', 'lit-html', 'lit-element', '@m3e/core'],
-    
     alias: {
       '@yeelight/shared': path.resolve(__dirname, '../shared/index.ts'),
-
-      // Жесткие ссылки на корень монорепозитория
       'lit': path.join(rootNodeModules, 'lit'),
       'lit-html': path.join(rootNodeModules, 'lit-html'),
       'lit-element': path.join(rootNodeModules, 'lit-element'),
-      
-      // M3E алиасы
       '@m3e/core/layout': path.join(rootNodeModules, '@m3e/core/dist/layout.js'),
       '@m3e/core/bidi': path.join(rootNodeModules, '@m3e/core/dist/bidi.js'),
       '@m3e/core/a11y': path.join(rootNodeModules, '@m3e/core/dist/a11y.js'),
       '@m3e/core/platform': path.join(rootNodeModules, '@m3e/core/dist/platform.js'),
       '@m3e/core/anchoring': path.join(rootNodeModules, '@m3e/core/dist/anchoring.js'),
-
       '@m3e/core': path.join(rootNodeModules, '@m3e/core/dist/index.js'),
       '@m3e/theme': path.join(rootNodeModules, '@m3e/theme/dist/index.js'),
       '@m3e/card': path.join(rootNodeModules, '@m3e/card/dist/index.js'),
