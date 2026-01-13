@@ -7,9 +7,13 @@ export const TempPage: React.FC = () => {
     const [temp, setTemp] = useState(4000);
     const [bright, setBright] = useState(50);
 
-    // Use refs for debounced calls
-    const debouncedTemp = useRef(debounce((val: number) => actions.setTemp(val), 300)).current;
-    const debouncedBri = useRef(debounce((val: number) => actions.setBright(val), 300)).current;
+    // Refs for sliders
+    const tempSliderRef = useRef<any>(null);
+    const briSliderRef = useRef<any>(null);
+
+    // Use memo for debounced calls to ensure they update when actions change (e.g. IP change)
+    const debouncedTemp = React.useMemo(() => debounce((val: number) => actions.setTemp(val), 300), [actions]);
+    const debouncedBri = React.useMemo(() => debounce((val: number) => actions.setBright(val), 300), [actions]);
 
     useEffect(() => {
         if (state) {
@@ -18,24 +22,37 @@ export const TempPage: React.FC = () => {
         }
     }, [state]);
 
-    const handleTempSlider = (e: any) => {
-        const val = parseInt(e.target.value);
-        setTemp(val);
-        debouncedTemp(val);
-    };
+    // Attach listeners for Temp Slider
+    useEffect(() => {
+        const el = tempSliderRef.current;
+        if (!el) return;
+        const handler = (e: any) => {
+            const val = parseInt(e.target.value);
+            setTemp(val);
+            debouncedTemp(val);
+        };
+        el.addEventListener('input', handler);
+        return () => el.removeEventListener('input', handler);
+    }, [debouncedTemp]);
 
-    const handleBriSlider = (e: any) => {
-        const val = parseInt(e.target.value);
-        setBright(val);
-        debouncedBri(val);
-    };
+    // Attach listeners for Brightness Slider
+    useEffect(() => {
+        const el = briSliderRef.current;
+        if (!el) return;
+        const handler = (e: any) => {
+            const val = parseInt(e.target.value);
+            setBright(val);
+            debouncedBri(val);
+        };
+        el.addEventListener('input', handler);
+        return () => el.removeEventListener('input', handler);
+    }, [debouncedBri]);
 
     const handlePreset = (val: number) => {
         setTemp(val);
         actions.setTemp(val); // Instant
     };
 
-    // Editable display
     const handleTempInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
         let val = parseInt(e.target.value);
         if (isNaN(val)) val = 4000;
@@ -67,8 +84,8 @@ export const TempPage: React.FC = () => {
     return (
         <div className="flex flex-col items-center justify-center h-full gap-10 animate-fade-in max-w-xl mx-auto w-full p-4">
 
-            {/* EDITABLE DISPLAY */}
-            <div className="relative group flex justify-center">
+            {/* EDITABLE DISPLAY - FIXED LAYOUT */}
+            <div className="flex items-baseline justify-center gap-1 group">
                 <input
                     type="number"
                     value={temp}
@@ -78,10 +95,7 @@ export const TempPage: React.FC = () => {
                     className="bg-transparent text-7xl md:text-9xl font-thin text-on-surface tracking-wider font-mono text-center transition-all outline-none border-b-2 border-transparent focus:border-primary/50 cursor-text hover:text-primary/90 w-[4ch] appearance-none m-0 p-0"
                     style={{MozAppearance: 'textfield'}} // Hide spinners
                 />
-                <span className="absolute top-2 -right-6 md:-right-8 text-2xl text-on-surface-variant font-bold select-none">K</span>
-                <div className="absolute -bottom-6 w-full text-center text-xs text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                    Нажми для ввода
-                </div>
+                <span className="text-2xl text-on-surface-variant font-bold select-none">K</span>
             </div>
 
             <div className="w-full flex flex-col gap-8 bg-surface-container-low p-8 rounded-[32px] border border-white/5 shadow-xl">
@@ -92,17 +106,17 @@ export const TempPage: React.FC = () => {
                         <span className="text-label-medium font-bold text-orange-300">1700K</span>
                         <span className="text-label-medium font-bold text-blue-300">6500K</span>
                     </div>
-                    <div className="relative w-full h-12 flex items-center justify-center">
-                        <div className="absolute w-full h-6 rounded-full pointer-events-none shadow-inner border border-white/5"
+                    <div className="relative w-full h-12 flex items-center justify-center overflow-hidden rounded-full">
+                        <div className="absolute w-full h-6 rounded-full pointer-events-none shadow-inner border border-white/5 top-1/2 -translate-y-1/2"
                              style={{background: 'linear-gradient(90deg, #ff9329 0%, #ffffff 50%, #a3cfff 100%)'}}></div>
 
                         <m3e-slider
+                            ref={tempSliderRef}
                             min="1700" max="6500" step="100"
                             value={temp}
-                            className="w-full relative z-10"
-                            style={{display: 'block', width: '100%', '--md-sys-color-primary': 'transparent', '--md-sys-color-surface-container-highest': 'transparent'}}
+                            className="w-full relative z-10 block"
+                            style={{'--md-sys-color-primary': 'transparent', '--md-sys-color-surface-container-highest': 'transparent'}}
                             labelled
-                            onInput={handleTempSlider}
                         >
                             <m3e-slider-thumb style={{'--md-sys-color-primary': '#fff', boxShadow: '0 4px 8px rgba(0,0,0,0.3)'}} value={temp}></m3e-slider-thumb>
                         </m3e-slider>
@@ -118,9 +132,17 @@ export const TempPage: React.FC = () => {
                         </div>
                         <span className="text-title-medium font-mono text-primary font-bold">{bright}%</span>
                     </div>
-                    <m3e-slider min="1" max="100" step="1" value={bright} style={{display: 'block', width: '100%'}} onInput={handleBriSlider}>
-                        <m3e-slider-thumb value={bright}></m3e-slider-thumb>
-                    </m3e-slider>
+                    {/* Wrap in overflow-hidden to contain slider */}
+                    <div className="w-full overflow-hidden">
+                        <m3e-slider
+                            ref={briSliderRef}
+                            min="1" max="100" step="1"
+                            value={bright}
+                            className="block w-full"
+                        >
+                            <m3e-slider-thumb value={bright}></m3e-slider-thumb>
+                        </m3e-slider>
+                    </div>
                 </div>
             </div>
 

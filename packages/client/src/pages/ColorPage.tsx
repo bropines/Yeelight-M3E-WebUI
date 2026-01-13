@@ -7,10 +7,11 @@ export const ColorPage: React.FC = () => {
     const { state, actions } = useDevice();
     const [hex, setHex] = useState('FFFFFF');
     const [bright, setBright] = useState(50);
+    const sliderRef = useRef<any>(null);
 
     // Debounced actions
-    const debouncedColor = useRef(debounce((val: string) => actions.setColor(parseInt(val, 16)), 200)).current;
-    const debouncedBri = useRef(debounce((val: number) => actions.setBright(val), 300)).current;
+    const debouncedColor = React.useMemo(() => debounce((val: string) => actions.setColor(parseInt(val, 16)), 200), [actions]);
+    const debouncedBri = React.useMemo(() => debounce((val: number) => actions.setBright(val), 300), [actions]);
 
     // Sync from state (network)
     useEffect(() => {
@@ -24,6 +25,19 @@ export const ColorPage: React.FC = () => {
         }
     }, [state]);
 
+    // Attach listener
+    useEffect(() => {
+        const el = sliderRef.current;
+        if (!el) return;
+        const handler = (e: any) => {
+            const val = parseInt(e.target.value);
+            setBright(val);
+            debouncedBri(val);
+        };
+        el.addEventListener('input', handler);
+        return () => el.removeEventListener('input', handler);
+    }, [debouncedBri]);
+
     const handleColorChange = (h: string) => {
         setHex(h);
         debouncedColor(h);
@@ -35,12 +49,6 @@ export const ColorPage: React.FC = () => {
         if (/^[0-9A-Fa-f]{6}$/.test(val)) {
             debouncedColor(val);
         }
-    };
-
-    const handleBriChange = (e: any) => {
-        const val = parseInt(e.target.value);
-        setBright(val);
-        debouncedBri(val);
     };
 
     return (
@@ -64,9 +72,16 @@ export const ColorPage: React.FC = () => {
                     <span className="text-xs font-bold uppercase text-gray-500">Яркость</span>
                     <span className="text-xs font-bold text-white">{bright}%</span>
                 </div>
-                <m3e-slider min="1" max="100" step="1" style={{width: '100%', display: 'block'}} onInput={handleBriChange} value={bright}>
-                    <m3e-slider-thumb value={bright}></m3e-slider-thumb>
-                </m3e-slider>
+                <div className="w-full overflow-hidden">
+                    <m3e-slider
+                        ref={sliderRef}
+                        min="1" max="100" step="1"
+                        className="block w-full"
+                        value={bright}
+                    >
+                        <m3e-slider-thumb value={bright}></m3e-slider-thumb>
+                    </m3e-slider>
+                </div>
             </div>
         </div>
     );

@@ -33,19 +33,21 @@ export const MainLayout: React.FC = () => {
 
     // Switch sync logic
     useEffect(() => {
-        if (switchRef.current) {
+        const el = switchRef.current;
+        if (el) {
             const isOn = state?.[0] === 'on';
-            if (switchRef.current.selected !== isOn) {
-                switchRef.current.selected = isOn;
+            if (el.selected !== isOn) {
+                el.selected = isOn;
             }
 
-            // Re-attach listener to avoid stale closures if needed, or just handle event
-            switchRef.current.onchange = (e: any) => {
-                 // Prevent loop if value matches
+            const handleChange = (e: any) => {
                  if (e.target.selected !== (state?.[0] === 'on')) {
                      actions.toggle();
                  }
             };
+
+            el.addEventListener('change', handleChange);
+            return () => el.removeEventListener('change', handleChange);
         }
     }, [state, actions]);
 

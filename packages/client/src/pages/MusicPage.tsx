@@ -54,6 +54,51 @@ export const MusicPage: React.FC = () => {
     // Canvas Refs
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
+    // Refs for sliders
+    const freqSliderRef = useRef<any>(null);
+    const sensSliderRef = useRef<any>(null);
+    const smoothSliderRef = useRef<any>(null);
+    const hueOffSliderRef = useRef<any>(null);
+    const hueDenSliderRef = useRef<any>(null);
+    const fftSliderRef = useRef<any>(null);
+
+    // Helper to attach slider listeners
+    const useSlider = (ref: any, callback: (val: any, target: any) => void) => {
+        useEffect(() => {
+            const el = ref.current;
+            if(!el) return;
+            const handler = (e: any) => callback(e.target.value, e.target);
+            el.addEventListener('input', handler);
+            // also listen for change if needed, but input is usually enough for m3e
+            el.addEventListener('change', handler);
+            return () => {
+                el.removeEventListener('input', handler);
+                el.removeEventListener('change', handler);
+            };
+        }, []);
+    };
+
+    useSlider(freqSliderRef, (val, target) => {
+        // Range slider logic if needed, or simple value
+        // M3E slider with two thumbs? It's complex. Let's assume standard behavior or custom logic
+        const thumbs = Array.from(target.querySelectorAll('m3e-slider-thumb')) as any[];
+        if(thumbs.length >= 2) {
+            const v1 = parseInt(thumbs[0].value);
+            const v2 = parseInt(thumbs[1].value);
+            setParams(p => ({...p, freqRange: [Math.min(v1, v2), Math.max(v1, v2)]}));
+        }
+    });
+
+    useSlider(sensSliderRef, (val) => setParams(p => ({...p, sensitivity: parseInt(val)})));
+    useSlider(smoothSliderRef, (val) => setParams(p => ({...p, smoothing: parseInt(val)/100})));
+    useSlider(hueOffSliderRef, (val) => setParams(p => ({...p, hueOffset: parseInt(val)})));
+    useSlider(hueDenSliderRef, (val) => setParams(p => ({...p, hueDensity: parseInt(val)})));
+    useSlider(fftSliderRef, (val) => {
+        const map = [64, 128, 256, 512, 1024, 2048];
+        setParams(p => ({...p, fftSize: map[parseInt(val)]}));
+    });
+
+
     // Throttled Sender
     const sendToLamp = useCallback(throttle((targetIp: string, bri: number, color: number | null) => {
         let url = `/api/music/update?ip=${targetIp}&bri=${bri}`;
@@ -304,18 +349,15 @@ export const MusicPage: React.FC = () => {
                                 <span>Триггер диапазон</span>
                                 <span className="text-primary">{params.freqRange[0]}% - {params.freqRange[1]}%</span>
                             </div>
-                            <m3e-slider
-                                min="0" max="100" step="1" className="w-full" style={{display:'block', width:'100%'}}
-                                onInput={(e: any) => {
-                                    const thumbs = Array.from(e.target.querySelectorAll('m3e-slider-thumb')) as any[];
-                                    const v1 = parseInt(thumbs[0].value);
-                                    const v2 = parseInt(thumbs[1].value);
-                                    updateParam('freqRange', [Math.min(v1, v2), Math.max(v1, v2)]);
-                                }}
-                            >
-                                <m3e-slider-thumb value={params.freqRange[0]}></m3e-slider-thumb>
-                                <m3e-slider-thumb value={params.freqRange[1]}></m3e-slider-thumb>
-                            </m3e-slider>
+                            <div className="w-full overflow-hidden">
+                                <m3e-slider
+                                    ref={freqSliderRef}
+                                    min="0" max="100" step="1" className="w-full block"
+                                >
+                                    <m3e-slider-thumb value={params.freqRange[0]}></m3e-slider-thumb>
+                                    <m3e-slider-thumb value={params.freqRange[1]}></m3e-slider-thumb>
+                                </m3e-slider>
+                            </div>
                         </div>
 
                         {/* Sensitivity & Smoothing */}
@@ -325,20 +367,22 @@ export const MusicPage: React.FC = () => {
                                     <span>Порог</span>
                                     <span>{params.sensitivity}</span>
                                 </div>
-                                <m3e-slider min="1" max="250" step="1" value={params.sensitivity} className="w-full" style={{display:'block', width:'100%'}}
-                                    onInput={(e: any) => updateParam('sensitivity', parseInt(e.target.value))}>
-                                    <m3e-slider-thumb value={params.sensitivity}></m3e-slider-thumb>
-                                </m3e-slider>
+                                <div className="w-full overflow-hidden">
+                                    <m3e-slider ref={sensSliderRef} min="1" max="250" step="1" value={params.sensitivity} className="w-full block">
+                                        <m3e-slider-thumb value={params.sensitivity}></m3e-slider-thumb>
+                                    </m3e-slider>
+                                </div>
                             </div>
                             <div>
                                 <div className="flex justify-between text-xs font-bold uppercase text-gray-500 mb-2">
                                     <span>Сглаж.</span>
                                     <span>{Math.round(params.smoothing * 100)}%</span>
                                 </div>
-                                <m3e-slider min="0" max="95" step="1" value={params.smoothing * 100} className="w-full" style={{display:'block', width:'100%'}}
-                                    onInput={(e: any) => updateParam('smoothing', parseInt(e.target.value) / 100)}>
-                                    <m3e-slider-thumb value={params.smoothing * 100}></m3e-slider-thumb>
-                                </m3e-slider>
+                                <div className="w-full overflow-hidden">
+                                    <m3e-slider ref={smoothSliderRef} min="0" max="95" step="1" value={params.smoothing * 100} className="w-full block">
+                                        <m3e-slider-thumb value={params.smoothing * 100}></m3e-slider-thumb>
+                                    </m3e-slider>
+                                </div>
                             </div>
                         </div>
 
@@ -353,20 +397,22 @@ export const MusicPage: React.FC = () => {
                                         <span>Смещение цвета</span>
                                         <span>{params.hueOffset}°</span>
                                     </div>
-                                    <m3e-slider min="0" max="360" step="1" value={params.hueOffset} className="w-full" style={{display:'block', width:'100%'}}
-                                         onInput={(e: any) => updateParam('hueOffset', parseInt(e.target.value))}>
-                                        <m3e-slider-thumb value={params.hueOffset}></m3e-slider-thumb>
-                                    </m3e-slider>
+                                    <div className="w-full overflow-hidden">
+                                        <m3e-slider ref={hueOffSliderRef} min="0" max="360" step="1" value={params.hueOffset} className="w-full block">
+                                            <m3e-slider-thumb value={params.hueOffset}></m3e-slider-thumb>
+                                        </m3e-slider>
+                                    </div>
                                 </div>
                                 <div>
                                     <div className="flex justify-between text-[10px] uppercase opacity-50 mb-1">
                                         <span>Плотность спектра</span>
                                         <span>{params.hueDensity}°</span>
                                     </div>
-                                    <m3e-slider min="0" max="360" step="5" value={params.hueDensity} className="w-full" style={{display:'block', width:'100%'}}
-                                        onInput={(e: any) => updateParam('hueDensity', parseInt(e.target.value))}>
-                                        <m3e-slider-thumb value={params.hueDensity}></m3e-slider-thumb>
-                                    </m3e-slider>
+                                    <div className="w-full overflow-hidden">
+                                        <m3e-slider ref={hueDenSliderRef} min="0" max="360" step="5" value={params.hueDensity} className="w-full block">
+                                            <m3e-slider-thumb value={params.hueDensity}></m3e-slider-thumb>
+                                        </m3e-slider>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -378,11 +424,14 @@ export const MusicPage: React.FC = () => {
                         <div className="bg-surface-container-low p-4 rounded-2xl border border-white/5 flex flex-col gap-3">
                             <span className="text-xs font-bold uppercase text-gray-500">Режим работы</span>
                             <m3e-segmented-button className="w-full"
-                                onChange={(e: any) => {
-                                     // For segmented button we have to find checked child
-                                     const segments = Array.from(e.target.querySelectorAll('m3e-button-segment')) as any[];
-                                     const sel = segments.find(s => s.checked);
-                                     if(sel) updateParam('colorMode', sel.value);
+                                ref={(el: any) => {
+                                    if(el) {
+                                        el.onchange = (e: any) => {
+                                            const segments = Array.from(e.target.querySelectorAll('m3e-button-segment')) as any[];
+                                            const sel = segments.find(s => s.checked);
+                                            if(sel) updateParam('colorMode', sel.value);
+                                        };
+                                    }
                                 }}
                             >
                                 <m3e-button-segment value="static" selected={params.colorMode === 'static' ? '' : undefined}>Статичный</m3e-button-segment>
@@ -395,10 +444,14 @@ export const MusicPage: React.FC = () => {
                         <div className="flex gap-4">
                             <div className="bg-surface-container-low p-1 rounded-2xl border border-white/5 flex-1">
                                 <m3e-segmented-button className="w-full"
-                                    onChange={(e: any) => {
-                                         const segments = Array.from(e.target.querySelectorAll('m3e-button-segment')) as any[];
-                                         const sel = segments.find(s => s.checked);
-                                         if(sel) updateParam('audioSourceType', sel.value);
+                                    ref={(el: any) => {
+                                        if(el) {
+                                            el.onchange = (e: any) => {
+                                                const segments = Array.from(e.target.querySelectorAll('m3e-button-segment')) as any[];
+                                                const sel = segments.find(s => s.checked);
+                                                if(sel) updateParam('audioSourceType', sel.value);
+                                            };
+                                        }
                                     }}
                                 >
                                     <m3e-button-segment value="mic" selected={params.audioSourceType === 'mic' ? '' : undefined} icon="mic">Мик</m3e-button-segment>
@@ -421,14 +474,14 @@ export const MusicPage: React.FC = () => {
                         <div className="mt-auto pt-2 flex flex-col gap-4">
                             <div className="flex items-center gap-2 px-2">
                                 <span className="text-[10px] font-bold uppercase text-gray-500">Детализация:</span>
-                                <m3e-slider min="0" max="5" step="1" value={Math.log2(params.fftSize) - 6} discrete className="flex-1" style={{display:'block'}}
-                                    onChange={(e: any) => {
-                                        const map = [64, 128, 256, 512, 1024, 2048];
-                                        updateParam('fftSize', map[parseInt(e.target.value)]);
-                                    }}
-                                >
-                                    <m3e-slider-thumb></m3e-slider-thumb>
-                                </m3e-slider>
+                                <div className="w-full overflow-hidden flex-1">
+                                    <m3e-slider
+                                        ref={fftSliderRef}
+                                        min="0" max="5" step="1" value={Math.log2(params.fftSize) - 6} discrete className="block w-full"
+                                    >
+                                        <m3e-slider-thumb></m3e-slider-thumb>
+                                    </m3e-slider>
+                                </div>
                                 <span className="text-[10px] font-bold text-primary w-8 text-right">{params.fftSize / 2}</span>
                             </div>
 
