@@ -3,12 +3,11 @@ import { ColorView } from '../views/ColorView';
 import { TempView } from '../views/TempView';
 import { MusicView } from '../views/MusicView';
 import { BuilderView } from '../views/BuilderView';
-import { SettingsView, ThemeConfig } from '../views/SettingsView'; // Import new view
+import { SettingsView, ThemeConfig } from '../views/SettingsView';
+import { NativeDialog } from './NativeDialog';
 
-// Regex для валидации IPv4
 const IP_REGEX = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
-// Default Theme Config
 const DEFAULT_THEME: ThemeConfig = {
     color: '#D0BCFF',
     scheme: 'dark',
@@ -25,7 +24,6 @@ export class App {
     private themeConfig: ThemeConfig;
 
     constructor(root: HTMLElement) {
-        // Load Theme Config
         const savedTheme = localStorage.getItem('yeelight_theme');
         this.themeConfig = savedTheme ? JSON.parse(savedTheme) : DEFAULT_THEME;
 
@@ -38,24 +36,17 @@ export class App {
                 class="flex h-screen w-full bg-background text-on-surface overflow-hidden relative flex-col md:flex-row transition-colors duration-500"
                 id="mainTheme">
                 
-                <!-- 1. DESKTOP RAIL (PC Only) -->
                 <m3e-nav-rail id="mainRail" class="hidden md:flex border-r border-outline-variant/10">
                     <m3e-icon-button slot="menu-button" toggle>
                         <m3e-icon name="menu"></m3e-icon>
                         <m3e-icon slot="selected" name="menu_open"></m3e-icon>
                         <m3e-nav-rail-toggle for="mainRail"></m3e-nav-rail-toggle>
                     </m3e-icon-button>
-
                     ${this.renderNavItems('rail')}
                 </m3e-nav-rail>
 
-                <!-- 2. MAIN CONTENT AREA -->
                 <div class="flex-1 flex flex-col h-full min-w-0 bg-background transition-all overflow-hidden">
-                    
-                    <!-- HEADER -->
                     <header class="h-20 px-4 md:px-8 flex items-center justify-between border-b border-outline-variant/10 bg-surface gap-4 shrink-0 z-10">
-                        
-                        <!-- Title & Status -->
                         <div class="flex items-center gap-3">
                             <span class="text-title-medium md:text-title-large font-bold whitespace-nowrap hidden sm:block">Yeelight</span>
                             <div class="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-surface-variant/50 border border-outline-variant/10" id="statusBadge">
@@ -64,64 +55,34 @@ export class App {
                             </div>
                         </div>
 
-                        <!-- CONTROLS -->
                         <div class="flex items-center gap-3 flex-1 justify-end">
-                            
-                            <!-- Refresh -->
                             <m3e-icon-button id="btnRefresh" variant="standard" class="text-on-surface-variant hidden sm:flex">
                                 <m3e-icon name="refresh"></m3e-icon>
                             </m3e-icon-button>
 
-                            <!-- IP Input -->
                             <div class="flex items-center bg-surface-variant rounded-xl px-3 h-10 md:h-12 border border-outline-variant/20 hover:border-outline/50 transition-colors w-32 md:w-48 group focus-within:border-primary">
                                 <input type="text" id="ipInput" class="bg-transparent border-none outline-none text-sm font-mono text-on-surface-variant w-full text-center placeholder:text-on-surface-variant/30" placeholder="192.168.1.X">
                             </div>
                             
-                            <!-- Save -->
-                            <m3e-icon-button id="btnSaveDevice" variant="tonal" class="shrink-0">
+                            <m3e-icon-button id="btnSaveDevice" variant="tonal" class="shrink-0" title="Сохранить устройство">
                                 <m3e-icon name="save"></m3e-icon>
                             </m3e-icon-button>
 
-                            <!-- Separator -->
                             <div class="w-px h-8 bg-outline-variant/20 mx-1 hidden sm:block"></div>
 
-                            <!-- POWER SWITCH -->
                             <div class="flex items-center gap-2 bg-surface-container-high rounded-full pl-4 pr-1 py-1 border border-outline-variant/10">
-                                <span class="text-label-small font-bold uppercase tracking-wider mr-1 hidden sm:block">Питание</span>
+                                <span class="text-label-small font-bold uppercase tracking-wider mr-1 hidden sm:block">Свет</span>
                                 <m3e-switch id="powerSwitch" icons="selected"></m3e-switch>
                             </div>
                         </div>
                     </header>
 
-                    <!-- VIEW CONTAINER -->
                     <main id="viewContainer" class="flex-1 p-4 md:p-8 overflow-y-auto custom-scrollbar pb-24 md:pb-8"></main>
                 </div>
 
-                <!-- 3. MOBILE BOTTOM BAR (Phone Only) -->
                 <m3e-nav-bar class="md:hidden border-t border-outline-variant/10 shrink-0 z-20">
                     ${this.renderNavItems('bar')}
                 </m3e-nav-bar>
-
-                <!-- SAVE DIALOG -->
-                <m3e-dialog id="saveDialog" headline="Сохранить устройство">
-                    <div slot="content" class="flex flex-col gap-4 py-2 min-w-[300px]">
-                        <div class="flex flex-col gap-1">
-                            <label class="text-label-small text-primary font-bold">IP АДРЕС</label>
-                            <input type="text" id="dlgIp" readonly 
-                                class="w-full h-10 px-3 rounded-lg bg-surface-variant text-on-surface border border-outline/20 font-mono outline-none">
-                        </div>
-                        <div class="flex flex-col gap-1">
-                            <label class="text-label-small text-primary font-bold">НАЗВАНИЕ</label>
-                            <input type="text" id="dlgName" placeholder="Моя Лампа" 
-                                class="w-full h-10 px-3 rounded-lg bg-surface-variant text-on-surface border border-outline/20 outline-none focus:border-primary">
-                        </div>
-                    </div>
-                    <div slot="actions">
-                        <m3e-button variant="text" id="dlgCancel">Отмена</m3e-button>
-                        <m3e-button variant="filled" id="dlgSave">Сохранить</m3e-button>
-                    </div>
-                </m3e-dialog>
-
             </m3e-theme>
         `;
         
@@ -132,7 +93,7 @@ export class App {
         this.navigate('scenes');
         
         this.syncState();
-        this.pollInterval = setInterval(() => this.syncState(), 5000);
+        this.pollInterval = setInterval(() => this.syncState(), 2000);
     }
 
     renderNavItems(type: 'rail' | 'bar') {
@@ -142,7 +103,7 @@ export class App {
             { id: 'temp', icon: 'thermostat', label: 'Белый' },
             { id: 'music', icon: 'mic', label: 'Музыка' },
             { id: 'builder', icon: 'build', label: 'Сборка' },
-            { id: 'settings', icon: 'settings', label: 'Настр.' }, // New Item
+            { id: 'settings', icon: 'settings', label: 'Настр.' },
         ];
 
         return items.map((item, idx) => `
@@ -159,7 +120,6 @@ export class App {
         const currentIp = localStorage.getItem('bulb_ip') || '';
         ipInput.value = currentIp;
 
-        // IP Validation
         ipInput.addEventListener('input', () => {
             const val = ipInput.value.trim();
             if (IP_REGEX.test(val)) {
@@ -171,7 +131,19 @@ export class App {
             }
         });
 
-        // Power Switch
+                // --- FIX: DESYNC ON TAB SWITCH ---
+        // Когда вкладка становится активной - мгновенный опрос
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+                console.log("👀 Tab active: Force sync");
+                this.syncState();
+                
+                // Перезапуск поллинга, если браузер его убил
+                clearInterval(this.pollInterval);
+                this.pollInterval = setInterval(() => this.syncState(), 2000);
+            }
+        });
+
         const pwrSwitch = document.getElementById('powerSwitch') as any;
         pwrSwitch?.addEventListener('change', (e: any) => {
             const newState = e.target.checked;
@@ -183,26 +155,53 @@ export class App {
         
         document.getElementById('btnRefresh')?.addEventListener('click', () => this.syncState());
 
-        // Dialog Logic
-        const dialog = document.getElementById('saveDialog') as any;
-        const dlgIp = document.getElementById('dlgIp') as HTMLInputElement;
-        const dlgName = document.getElementById('dlgName') as HTMLInputElement;
-
-        document.getElementById('btnSaveDevice')?.addEventListener('click', () => {
+        // --- NEW DIALOG LOGIC ---
+        document.getElementById('btnSaveDevice')?.addEventListener('click', async () => {
             if(!ipInput.value || !IP_REGEX.test(ipInput.value)) return;
-            dlgIp.value = ipInput.value;
+            
+            const currentIp = ipInput.value;
             const saved = JSON.parse(localStorage.getItem('yeelight_devices') || '{}');
-            dlgName.value = saved[ipInput.value] || '';
-            dialog.open = true;
-        });
+            const currentName = saved[currentIp] || '';
 
-        document.getElementById('dlgCancel')?.addEventListener('click', () => dialog.open = false);
-        document.getElementById('dlgSave')?.addEventListener('click', () => {
-            if(dlgIp.value) {
-                const saved = JSON.parse(localStorage.getItem('yeelight_devices') || '{}');
-                saved[dlgIp.value] = dlgName.value || 'My Lamp';
+            // M3 Styled Inputs
+            const dialogContent = `
+                <div class="flex flex-col gap-4 pt-2">
+                    
+                    <!-- IP READONLY FIELD -->
+                    <div class="flex flex-col gap-1">
+                        <div class="relative bg-surface-variant/30 rounded-t-lg rounded-b-none border-b border-outline-variant hover:bg-surface-variant/50 transition-colors h-14 px-4 flex flex-col justify-center opacity-60">
+                            <span class="text-[12px] text-primary font-medium leading-4">IP Адрес</span>
+                            <input type="text" value="${currentIp}" readonly 
+                                class="bg-transparent border-none outline-none text-on-surface text-body-large font-mono p-0 pointer-events-none">
+                            <m3e-icon name="wifi" class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant"></m3e-icon>
+                        </div>
+                    </div>
+
+                    <!-- NAME INPUT FIELD -->
+                    <div class="flex flex-col gap-1">
+                        <div class="relative bg-surface-variant/30 rounded-t-lg rounded-b-none border-b border-on-surface hover:bg-surface-variant/50 focus-within:bg-surface-variant/50 transition-colors h-14 px-4 flex flex-col justify-center group">
+                            <span class="text-[12px] text-on-surface-variant group-focus-within:text-primary font-medium leading-4 transition-colors">Название устройства</span>
+                            <input type="text" id="dlgNameInput" placeholder="Например: Люстра" value="${currentName}" 
+                                class="bg-transparent border-none outline-none text-on-surface text-body-large p-0 placeholder:text-on-surface-variant/30">
+                            <m3e-icon name="edit" class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors"></m3e-icon>
+                        </div>
+                    </div>
+
+                </div>
+            `;
+
+            const dlg = new NativeDialog("Сохранение", dialogContent, [
+                { label: "Отмена", value: "cancel", variant: "text" },
+                { label: "Сохранить", value: "save", variant: "filled" }
+            ]);
+
+            const result = await dlg.open();
+            
+            if (result === 'save') {
+                const nameInput = dlg.getElement('#dlgNameInput') as HTMLInputElement;
+                saved[currentIp] = nameInput.value || 'My Lamp';
                 localStorage.setItem('yeelight_devices', JSON.stringify(saved));
-                dialog.open = false;
+                // Optional: Show snackbar confirmation here
             }
         });
 
@@ -212,12 +211,10 @@ export class App {
             item.addEventListener('click', () => {
                 const tab = item.getAttribute('data-tab');
                 if(!tab) return;
-
                 navItems.forEach(i => {
                     if(i.getAttribute('data-tab') === tab) i.setAttribute('active', '');
                     else i.removeAttribute('active');
                 });
-                
                 this.navigate(tab);
             });
         });
@@ -226,8 +223,6 @@ export class App {
     applyTheme(conf: ThemeConfig) {
         this.themeConfig = conf;
         localStorage.setItem('yeelight_theme', JSON.stringify(conf));
-        
-        // Update M3E Theme properties
         this.container.setAttribute('color', conf.color);
         this.container.setAttribute('scheme', conf.scheme);
         this.container.setAttribute('density', conf.density.toString());
@@ -290,7 +285,7 @@ export class App {
         try { 
             await fetch(`/api/act?ip=${ip}&type=${type}&val=${val}`);
             if (type !== 'toggle') {
-                setTimeout(() => this.syncState(), 200);
+                setTimeout(() => this.syncState(), 150);
             }
         } catch(e) {}
     }

@@ -1,9 +1,9 @@
 import { Socket } from "net";
 
-// Интерфейс для задачи в очереди
-interface QueueTask {
-    payload: string;
+interface QueueItem {
     id: number;
+    method: string;
+    params: any[];
     resolve: (val: any) => void;
     reject: (err: any) => void;
 }
@@ -12,115 +12,131 @@ export class YeelightDevice {
     private socket: Socket | null = null;
     private msgId = 1;
     private connected = false;
-    
-    // Очередь команд
-    private commandQueue: QueueTask[] = [];
-    private isSending = false;
+    private queue: QueueItem[] = [];
+    private isProcessing = false;
+    private pendingRequests = new Map<number, QueueItem>(); // Ждут ответа от лампы
 
-    // ЗАДЕРЖКА МЕЖДУ КОМАНДАМИ (мс)
-    // 100мс - безопасно для обычного режима.
-    // Если включен Music Mode, этот механизм лучше обходить (см. music.ts).
-    private readonly CMD_DELAY = 100; 
+    // ПАУЗА МЕЖДУ КОМАНДАМИ (мс)
+    // 250мс = 4 команды в секунду. Это безопасно.
+    private readonly RATE_LIMIT = 250; 
 
     constructor(private ip: string, private port = 55443) {}
 
-    // ... (метод connect оставляем как был) ...
-    private connect(): Promise<void> {
-        if (this.connected && this.socket && !this.socket.destroyed) return Promise.resolve();
+    // Публичный метод — просто кладет в очередь
+    send(method: string, params: any[] = []): Promise<any> {
         return new Promise((resolve, reject) => {
-            this.socket = new Socket();
-            this.socket.setTimeout(3000); // Таймаут соединения
-            this.socket.connect(this.port, this.ip, () => {
-                this.connected = true;
-                resolve();
-            });
-            this.socket.on('data', (data) => this.handleMessage(data));
-            this.socket.on('error', (e) => {
-                console.error(`[${this.ip}] Err: ${e.message}`);
-                this.disconnect();
-            });
-            this.socket.on('close', () => this.disconnect());
-        });
-    }
-
-    disconnect() {
-        if (this.socket) this.socket.destroy();
-        this.socket = null;
-        this.connected = false;
-        this.isSending = false;
-    }
-
-    // Публичный метод отправки теперь просто кладет в очередь
-    async send(method: string, params: any[] = []): Promise<any> {
-        const id = this.msgId++;
-        const payload = JSON.stringify({ id, method, params }) + "\r\n";
-
-        return new Promise((resolve, reject) => {
-            this.commandQueue.push({ payload, id, resolve, reject });
+            const id = this.msgId++;
+            this.queue.push({ id, method, params, resolve, reject });
             this.processQueue();
         });
     }
 
-    // Обработчик очереди
-    private async processQueue() {
-        if (this.isSending || this.commandQueue.length === 0) return;
+    private async connect(): Promise<void> {
+        if (this.connected && this.socket && !this.socket.destroyed) return;
 
-        this.isSending = true;
-        
-        // Берем первую задачу
-        const task = this.commandQueue[0]; 
-
-        try {
-            await this.connect();
+        return new Promise((resolve, reject) => {
+            this.socket = new Socket();
+            this.socket.setTimeout(5000);
             
-            // Отправляем
-            if(this.socket && !this.socket.destroyed) {
-                this.socket.write(task.payload);
-            } else {
-                throw new Error("Socket closed");
-            }
+            this.socket.connect(this.port, this.ip, () => {
+                console.log(`[${this.ip}] Connected via TCP`);
+                this.connected = true;
+                resolve();
+            });
 
-            // Ждем ответа (логика ожидания должна быть внутри handleMessage, 
-            // но для простоты здесь мы просто делаем паузу перед следующим выстрелом)
+            this.socket.on('data', (data) => this.handleData(data));
             
-            // ВАЖНО: Искусственная задержка, чтобы лампа успела "прожевать"
-            await new Promise(r => setTimeout(r, this.CMD_DELAY));
+            this.socket.on('error', (err) => {
+                console.error(`[${this.ip}] Socket Error:`, err.message);
+                this.disconnect();
+                reject(err);
+            });
 
-        } catch (e) {
-            // Если ошибка отправки, реджектим текущую задачу
-            task.reject(e);
-            this.commandQueue.shift(); // Удаляем
-        } finally {
-            this.isSending = false;
-            // Рекурсивно запускаем обработку следующей задачи
-            if (this.commandQueue.length > 0) this.processQueue();
-        }
+            this.socket.on('close', () => {
+                this.connected = false;
+            });
+        });
     }
 
-    // Обработка входящих сообщений от лампы
-    private handleMessage(data: Buffer) {
-        const str = data.toString();
-        // Пытаемся найти ID в ответе и разрезолвить задачу
-        try {
-            const msgs = str.split('\r\n');
-            msgs.forEach(msg => {
-                if(!msg) return;
-                const json = JSON.parse(msg);
+    private disconnect() {
+        if (this.socket) {
+            this.socket.destroy();
+            this.socket = null;
+        }
+        this.connected = false;
+        this.isProcessing = false;
+    }
+
+    // "Сердце" класса - обработчик очереди
+    private async processQueue() {
+        if (this.isProcessing || this.queue.length === 0) return;
+        this.isProcessing = true;
+
+        while (this.queue.length > 0) {
+            const task = this.queue.shift();
+            if (!task) break;
+
+            try {
+                await this.connect();
                 
-                // Находим задачу в очереди, которая соответствует ID ответа
-                // Примечание: в реальной сложной очереди порядок может сбиться, 
-                // если лампа отвечает асинхронно, но Yeelight обычно отвечает FIFO.
-                const taskIndex = this.commandQueue.findIndex(t => t.id === json.id);
+                const payload = JSON.stringify({ id: task.id, method: task.method, params: task.params }) + "\r\n";
                 
-                if (taskIndex !== -1) {
-                    const task = this.commandQueue[taskIndex];
-                    if (json.error) task.reject(json.error);
-                    else task.resolve(json.result);
+                if (this.socket && !this.socket.destroyed) {
+                    this.socket.write(payload);
+                    // Запоминаем, что мы ждем ответ на этот ID
+                    this.pendingRequests.set(task.id, task);
                     
-                    // Удаляем выполненную задачу из очереди
-                    this.commandQueue.splice(taskIndex, 1);
+                    // Если это специфичные команды без ответа, можно резолвить сразу, 
+                    // но лучше ждать ответа лампы.
+                } else {
+                    throw new Error("Socket not writable");
                 }
-            });
-        } catch (e) {}
+
+                // Ждем паузу перед отправкой СЛЕДУЮЩЕЙ команды, чтобы не зафлудить лампу
+                await new Promise(r => setTimeout(r, this.RATE_LIMIT));
+
+            } catch (e) {
+                console.error(`[${this.ip}] Send failed:`, e);
+                task.reject(e);
+                this.disconnect();
+                // Пауза перед ретраем следующей команды
+                await new Promise(r => setTimeout(r, 1000));
+            }
+        }
+
+        this.isProcessing = false;
+    }
+
+    private handleData(data: Buffer) {
+        const lines = data.toString().split('\r\n');
+        
+        lines.forEach(line => {
+            if (!line) return;
+            try {
+                const msg = JSON.parse(line);
+                
+                // 1. Это ответ на команду?
+                if (msg.id && this.pendingRequests.has(msg.id)) {
+                    const req = this.pendingRequests.get(msg.id)!;
+                    this.pendingRequests.delete(msg.id);
+                    
+                    if (msg.error) {
+                        console.error(`[${this.ip}] Yeelight Error:`, msg.error);
+                        req.reject(msg.error);
+                    } else {
+                        req.resolve(msg.result);
+                    }
+                }
+                
+                // 2. Это уведомление (props changed)?
+                if (msg.method === 'props') {
+                    // В будущем тут можно обновлять кэш без опроса
+                    // console.log(`[${this.ip}] Props update:`, msg.params);
+                }
+
+            } catch (e) {
+                // Игнорируем битые JSON пакеты
+            }
+        });
     }
 }

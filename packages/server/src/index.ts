@@ -9,16 +9,39 @@ const devices = new Map<string, YeelightDevice>();
 const discovery = new DiscoveryService();
 const musicService = new MusicService();
 
-// Хранилище флагов для остановки бесконечных циклов
-const runningFlows = new Map<string, boolean>();
+// --- STATE MANAGEMENT ---
+const activeIPs = new Set<string>(); // Список IP для опроса
+const stateCache = new Map<string, any>(); // Кэш состояний
+const runningFlows = new Map<string, boolean>(); // Флаги циклов
 
 // Helper
 const getDevice = (ip: string) => {
     if (!devices.has(ip)) devices.set(ip, new YeelightDevice(ip));
+    // Добавляем в список опроса, если пришел запрос
+    activeIPs.add(ip); 
     return devices.get(ip)!;
 };
 
-// Хелпер для парсинга цветов
+// --- BACKGROUND POLLING LOOP (1 sec) ---
+setInterval(async () => {
+    for (const ip of activeIPs) {
+        try {
+            // Если включен музыкальный режим или сложный флоу, опрос может мешать,
+            // но для простоты опрашиваем всегда.
+            const dev = getDevice(ip);
+            // Используем таймаут поменьше для опроса
+            const props = await dev.send("get_prop", ["power", "bright", "ct", "rgb", "color_mode"]);
+            if (props) {
+                stateCache.set(ip, props);
+            }
+        } catch (e) {
+            // Если ошибка — можно пометить как оффлайн в кэше
+            // stateCache.delete(ip); 
+        }
+    }
+}, 5000);
+
+// --- HELPERS ---
 const parseColor = (val: string | number): number => {
     if (typeof val === 'number') return val;
     if (typeof val === 'string' && val.startsWith('#')) {
@@ -27,70 +50,100 @@ const parseColor = (val: string | number): number => {
     return 0xFFFFFF;
 };
 
-// Функция паузы
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-// CORS Headers
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
 };
 
+// --- SERVER ---
 serve({
     port: 3000,
     async fetch(req) {
         const url = new URL(req.url);
-        
-        // Handle CORS preflight
         if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
         const ip = url.searchParams.get("ip");
-
-        // --- API ROUTES ---
 
         // 1. Config & Discovery
         if (url.pathname === "/api/builder/config") return Response.json(BUILDER_CONFIG, { headers: corsHeaders });
         
         if (url.pathname === "/api/discover") {
             const ips = await discovery.scan();
+            // Добавляем найденные в опрос
+            ips.forEach(i => activeIPs.add(i));
             return Response.json(ips, { headers: corsHeaders });
         }
 
-        // 2. Status
+        // 2. Status (INSTANT CACHE)
         if (url.pathname === "/api/status") {
             if (!ip) return new Response("IP Missing", { status: 400, headers: corsHeaders });
-            try {
-                const dev = getDevice(ip);
-                const props = await dev.send("get_prop", ["power", "bright", "ct", "rgb", "color_mode"]);
-                return Response.json(props, { headers: corsHeaders });
-            } catch (e) { return new Response("Error", { status: 500, headers: corsHeaders }); }
+            
+            // Регистрируем IP для поллинга
+            activeIPs.add(ip);
+            
+            // Отдаем кэш или пустой массив, если данных еще нет
+            const cached = stateCache.get(ip);
+            if (cached) {
+                return Response.json(cached, { headers: corsHeaders });
+            } else {
+                // Если кэша нет, пробуем получить синхронно 1 раз
+                try {
+                    const dev = getDevice(ip);
+                    const props = await dev.send("get_prop", ["power", "bright", "ct", "rgb", "color_mode"]);
+                    stateCache.set(ip, props);
+                    return Response.json(props, { headers: corsHeaders });
+                } catch {
+                    return new Response("Error", { status: 500, headers: corsHeaders });
+                }
+            }
         }
 
-        // 3. Actions (Simple)
+        // 3. Actions
         if (url.pathname === "/api/act") {
             if (!ip) return new Response("IP Missing", { status: 400, headers: corsHeaders });
             const dev = getDevice(ip);
             const type = url.searchParams.get("type");
             const val = url.searchParams.get("val");
 
-            // При любой ручной команде останавливаем текущий цикл сервера
-            runningFlows.set(ip, false);
+            runningFlows.set(ip, false); // Stop flows on manual action
 
-            if (type === "toggle") await dev.send("toggle");
-            else if (type === "bright") await dev.send("set_bright", [parseInt(val!), "smooth", 500]);
-            else if (type === "temp") await dev.send("set_ct_abx", [parseInt(val!), "smooth", 500]);
-            else if (type === "color") await dev.send("set_rgb", [parseInt(val!), "smooth", 500]);
+            // Optimistic update of cache (optional, but good for UI responsiveness)
+            // Мы обновляем кэш вручную, чтобы поллинг не перетер его старым значением мгновенно
+            const currentCache = stateCache.get(ip) || [];
+            
+            if (type === "toggle") {
+                await dev.send("toggle");
+                // Инвертируем кэш для мгновенной реакции UI при следующем опросе
+                if (currentCache[0]) currentCache[0] = currentCache[0] === 'on' ? 'off' : 'on';
+            }
+            else if (type === "bright") {
+                const v = parseInt(val!);
+                await dev.send("set_bright", [v, "smooth", 500]);
+                currentCache[1] = v.toString();
+            }
+            else if (type === "temp") {
+                const v = parseInt(val!);
+                await dev.send("set_ct_abx", [v, "smooth", 500]);
+                currentCache[2] = v.toString();
+            }
+            else if (type === "color") {
+                const v = parseInt(val!);
+                await dev.send("set_rgb", [v, "smooth", 500]);
+                currentCache[3] = v.toString();
+            }
             else if (type === "stop") await dev.send("stop_cf");
             
+            stateCache.set(ip, currentCache);
             return new Response("OK", { headers: corsHeaders });
         }
 
-        // 4. Scenes (Presets)
+        // 4. Scenes
         if (url.pathname === "/api/scene") {
             if (!ip) return new Response("IP Missing", { status: 400, headers: corsHeaders });
-            runningFlows.set(ip, false); // Stop custom flows
-            
+            runningFlows.set(ip, false);
             const name = url.searchParams.get("name");
             const dev = getDevice(ip);
 
@@ -100,104 +153,61 @@ serve({
             return new Response("OK", { headers: corsHeaders });
         }
 
-        // 5. Custom Flow Builder (SEQUENTIAL EXECUTOR + LOOP)
+        // 5. Custom Flow (Loop)
         if (url.pathname === "/api/custom_flow" && req.method === "POST") {
             if (!ip) return new Response("IP Missing", { status: 400, headers: corsHeaders });
-            
             try {
                 const body = await req.json();
                 const steps = body.steps;
-                const isLoop = body.loop === true; // Флаг бесконечного цикла
+                const isLoop = body.loop === true;
 
-                if (!Array.isArray(steps) || steps.length === 0) {
-                    return new Response("Invalid steps", { status: 400, headers: corsHeaders });
-                }
+                if (!Array.isArray(steps)) return new Response("Invalid steps", { status: 400, headers: corsHeaders });
 
-                // Запускаем флаг работы
                 runningFlows.set(ip, true);
 
-                // Асинхронное выполнение
                 (async () => {
                     const dev = getDevice(ip);
-                    console.log(`[${ip}] Starting flow (Loop: ${isLoop})...`);
-
                     await dev.send("stop_cf");
-                    
-                    // Бесконечный цикл, если isLoop = true, иначе 1 раз
                     do {
                         for (const step of steps) {
-                            // Проверяем флаг отмены перед каждым шагом
-                            if (runningFlows.get(ip) === false) {
-                                console.log(`[${ip}] Flow aborted by user.`);
-                                return;
-                            }
-
+                            if (runningFlows.get(ip) === false) return;
                             const dur = Math.max(100, parseInt(step.dur) || 1000);
                             const bri = Math.max(1, parseInt(step.bri) || 100);
 
                             try {
                                 switch (step.type) {
-                                    case 'color': {
-                                        const color = parseColor(step.val);
-                                        await dev.send("set_rgb", [color, "smooth", dur]);
+                                    case 'color':
+                                        await dev.send("set_rgb", [parseColor(step.val), "smooth", dur]);
                                         break;
-                                    }
-                                    case 'gradient': {
-                                        const start = parseColor(step.start);
-                                        const end = parseColor(step.end);
-                                        // 1. Мгновенно начало
-                                        await dev.send("set_rgb", [start, "sudden", 0]);
-                                        await dev.send("set_bright", [bri, "sudden", 0]); // Убеждаемся в яркости
-                                        // 2. Плавно конец
-                                        await dev.send("set_rgb", [end, "smooth", dur]);
+                                    case 'gradient':
+                                        await dev.send("set_rgb", [parseColor(step.start), "sudden", 0]);
+                                        await dev.send("set_bright", [bri, "sudden", 0]);
+                                        await dev.send("set_rgb", [parseColor(step.end), "smooth", dur]);
                                         break;
-                                    }
-                                    case 'flash': {
+                                    case 'flash':
+                                    case 'pulse':
                                         const color = parseColor(step.val);
                                         const half = Math.max(50, Math.floor(dur / 2));
-                                        // Вспышка через нативный CF
-                                        const flow = `${half},1,${color},${bri},${half},1,${color},1`;
+                                        const endBri = step.type === 'pulse' ? Math.max(1, Math.floor(bri * 0.3)) : 1;
+                                        const flow = `${half},1,${color},${bri},${half},1,${color},${endBri}`;
                                         await dev.send("start_cf", [1, 1, flow]);
                                         break;
-                                    }
-                                    case 'pulse': {
-                                        const color = parseColor(step.val);
-                                        const half = Math.max(50, Math.floor(dur / 2));
-                                        const minBri = Math.max(1, Math.floor(bri * 0.3));
-                                        const flow = `${half},1,${color},${bri},${half},1,${color},${minBri}`;
-                                        await dev.send("start_cf", [1, 1, flow]);
-                                        break;
-                                    }
-                                    case 'sleep': {
-                                        break;
-                                    }
                                 }
                                 await sleep(dur);
-
-                            } catch (err) {
-                                console.error(`[${ip}] Step failed:`, err);
-                            }
+                            } catch (e) {}
                         }
                     } while (isLoop && runningFlows.get(ip) === true);
-
-                    console.log(`[${ip}] Flow finished.`);
                 })();
 
                 return new Response("Flow Started", { headers: corsHeaders });
-
-            } catch (e) {
-                console.error(e);
-                return new Response("Server Error", { status: 500, headers: corsHeaders });
-            }
+            } catch (e) { return new Response("Err", { status: 500, headers: corsHeaders }); }
         }
 
         // 6. Music Mode
         if (url.pathname === "/api/music/start") {
             if (!ip) return new Response("IP Missing", { status: 400, headers: corsHeaders });
             const dev = getDevice(ip);
-            const myIp = musicService.getHost();
-            const myPort = musicService.getPort();
-            await dev.send("set_music", [1, myIp, myPort]);
+            await dev.send("set_music", [1, musicService.getHost(), musicService.getPort()]);
             return new Response("OK", { headers: corsHeaders });
         }
 
